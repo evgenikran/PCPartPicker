@@ -1,0 +1,113 @@
+﻿[
+  {
+    "Id": "cpu-1",
+    "Type": "CPU",
+    "Name": "Ryzen 5 5600",
+    "Price": 180,
+    "PerformanceScore": 75,
+    "Socket": "AM4",
+    "Wattage": 65
+  },
+  {
+    "Id": "cpu-2",
+    "Type": "CPU",
+    "Name": "Ryzen 7 7700X",
+    "Price": 320,
+    "PerformanceScore": 88,
+    "Socket": "AM5",
+    "Wattage": 105
+  },
+  {
+    "Id": "gpu-1",
+    "Type": "GPU",
+    "Name": "RTX 3060",
+    "Price": 300,
+    "PerformanceScore": 70,
+    "Wattage": 170
+  },
+  {
+    "Id": "gpu-2",
+    "Type": "GPU",
+    "Name": "RTX 4070",
+    "Price": 600,
+    "PerformanceScore": 90,
+    "Wattage": 200
+  },
+  {
+    "Id": "mb-am4-1",
+    "Type": "Motherboard",
+    "Name": "B550 Motherboard",
+    "Price": 130,
+    "PerformanceScore": 60,
+    "Socket": "AM4",
+    "RamType": "DDR4"
+  },
+  {
+    "Id": "mb-am5-1",
+    "Type": "Motherboard",
+    "Name": "B650 Motherboard",
+    "Price": 180,
+    "PerformanceScore": 75,
+    "Socket": "AM5",
+    "RamType": "DDR5"
+  },
+  {
+    "Id": "ram-16-ddr4",
+    "Type": "RAM",
+    "Name": "16GB DDR4",
+    "Price": 60,
+    "PerformanceScore": 50,
+    "SizeGb": 16,
+    "RamType": "DDR4"
+  },
+  {
+    "Id": "ram-32-ddr4",
+    "Type": "RAM",
+    "Name": "32GB DDR4",
+    "Price": 110,
+    "PerformanceScore": 70,
+    "SizeGb": 32,
+    "RamType": "DDR4"
+  },
+  {
+    "Id": "ram-32-ddr5",
+    "Type": "RAM",
+    "Name": "32GB DDR5",
+    "Price": 150,
+    "PerformanceScore": 85,
+    "SizeGb": 32,
+    "RamType": "DDR5"
+  },
+  {
+    "Id": "ssd-512",
+    "Type": "Storage",
+    "Name": "512GB NVMe SSD",
+    "Price": 50,
+    "PerformanceScore": 60,
+    "CapacityGb": 512
+  },
+  {
+    "Id": "ssd-1tb",
+    "Type": "Storage",
+    "Name": "1TB NVMe SSD",
+    "Price": 90,
+    "PerformanceScore": 80,
+    "CapacityGb": 1024
+  },
+  {
+    "Id": "psu-650",
+    "Type": "PSU",
+    "Name": "650W Gold PSU",
+    "Price": 90,
+    "PerformanceScore": 70,
+    "Wattage": 650
+  },
+  {
+    "Id": "psu-750",
+    "Type": "PSU",
+    "Name": "750W Gold PSU",
+    "Price": 120,
+    "PerformanceScore": 85,
+    "Wattage": 750
+  }
+]
