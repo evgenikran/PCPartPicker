@@ -1,14 +1,15 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using PcBuilder.Core.Models;
+using PcBuilder.Core.Profiles;
+using PcBuilder.Core.Repositories;
+using PcBuilder.Core.Services;
 using PcBuilder.Infrastructure.Data;
-
-using System.Text;
+using PcBuilder.Infrastructure.Repositories;
 using System;
 using System.Text;
 using System.Windows;
-using PcBuilder.Core.Repositories;
-using PcBuilder.Core.Services;
-using PcBuilder.Core.Profiles;
-using PcBuilder.Core.Models;
+
+
 
 namespace PcBuilder.Wpf
 {
@@ -20,10 +21,14 @@ namespace PcBuilder.Wpf
         {
             InitializeComponent();
 
-            IPartRepository repo =
-                new JsonPartRepository("Data/parts.json");
+            var options = new DbContextOptionsBuilder<PcBuilderDbContext>()
+                .UseSqlServer("Server=DESKTOP-EQN3H9P\\MSSQLSERVER01;Database=PcBuilderDb;Trusted_Connection=True;TrustServerCertificate=True;")
+                .Options;
 
+            var context = new PcBuilderDbContext(options);
+            IPartRepository repo = new EfPartRepository(context);
             _generator = new BuildGenerator(repo);
+
 
             WorkloadComboBox.Items.Add("Gaming");
             WorkloadComboBox.Items.Add("Video Editing");

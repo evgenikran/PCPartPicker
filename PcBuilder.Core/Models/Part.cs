@@ -27,6 +27,8 @@ namespace PcBuilder.Core.Models
         public int? CapacityGb { get; set; }
 
         public int? Wattage { get; set; }
+
+        public string? ImageUrl { get; set; }
     }
 
 }
