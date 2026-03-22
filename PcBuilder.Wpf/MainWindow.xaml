@@ -86,11 +86,9 @@
                            FontWeight="SemiBold"
                            Foreground="#555"/>
 
-                <ComboBox x:Name="WorkloadComboBox">
-                    <ComboBoxItem Content="Gaming"/>
-                    <ComboBoxItem Content="Workstation"/>
-                    <ComboBoxItem Content="Office"/>
-                </ComboBox>
+                <ComboBox x:Name="WorkloadComboBox"/>
+                    
+                
 
                 <!-- Button -->
                 <Button Content="Generate Build"
