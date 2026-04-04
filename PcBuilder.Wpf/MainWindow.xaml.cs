@@ -26,7 +26,6 @@ namespace PcBuilder.Wpf
             IPartRepository repo = new EfPartRepository(context);
             _generator = new BuildGenerator(repo);
 
-            // Workload options added here only — remove any ComboBoxItem tags from XAML
             WorkloadComboBox.Items.Add("Gaming");
             WorkloadComboBox.Items.Add("Video Editing");
             WorkloadComboBox.Items.Add("AI");
@@ -50,20 +49,36 @@ namespace PcBuilder.Wpf
                 _ => WorkloadProfiles.Gaming
             };
 
+            if (budget < profile.MinimumBudget)
+            {
+                OutputTextBox.Text =
+                    $"A minimum budget of ${profile.MinimumBudget:F0} is recommended for {profile.Name} builds.\n\n" +
+                    $"Below this, a meaningful build is not possible.\n" +
+                    $"Please increase your budget or switch to Gaming.";
+                return;
+            }
+
             var builds = _generator.Generate(budget, profile);
 
             if (builds.Count == 0)
             {
-                OutputTextBox.Text = $"No builds found for a ${budget} budget. Try increasing the budget.";
+                OutputTextBox.Text =
+                    $"No build found for ${budget:F0} ({profile.Name}).\n" +
+                    $"Try increasing your budget slightly.";
                 return;
             }
 
             var sb = new StringBuilder();
-
             foreach (var build in builds)
             {
+                decimal overage = build.TotalPrice - budget;
+
                 sb.AppendLine($"Build type: {build.BuildType}");
                 sb.AppendLine($"Total price: ${build.TotalPrice:F2}");
+
+                // Inform user if build slightly exceeds their budget
+                if (overage > 0)
+                    sb.AppendLine($"  ⚠ ${overage:F2} over your budget of ${budget:F2}");
 
                 foreach (var part in build.Parts)
                     sb.AppendLine($"  - {part.Type}: {part.Name} (${part.Price:F2})");

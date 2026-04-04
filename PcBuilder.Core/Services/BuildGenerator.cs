@@ -17,6 +17,9 @@ namespace PcBuilder.Core.Services
 
         public List<BuildResult> Generate(decimal budget, WorkloadProfile profile)
         {
+            if (budget < profile.MinimumBudget)
+                return new List<BuildResult>();
+
             var gpus = _repository.GetByType("GPU").ToList();
             var cpus = _repository.GetByType("CPU").ToList();
             var rams = _repository.GetByType("RAM").ToList();
@@ -24,85 +27,83 @@ namespace PcBuilder.Core.Services
             var storages = _repository.GetByType("Storage").ToList();
             var psus = _repository.GetByType("PSU").ToList();
 
-            var eligibleCpus = profile.MaxCpuScore > 0
-                ? cpus.Where(c => c.PerformanceScore <= profile.MaxCpuScore).ToList()
-                : cpus;
+            var eligibleCpus = cpus
+                .Where(c => profile.MaxCpuScore == 0 || c.PerformanceScore <= profile.MaxCpuScore)
+                .Where(c => c.Price <= budget * profile.MaxCpuBudgetRatio)
+                .ToList();
+
+            var eligibleGpus = gpus
+                .Where(g => profile.RequiredGpuBrand == null ||
+                            g.Name.Contains(profile.RequiredGpuBrand, StringComparison.OrdinalIgnoreCase))
+                .Where(g => g.PerformanceScore >= profile.MinGpuScore)
+                .Where(g => profile.MinGpuVram == 0 || (g.SizeGb ?? 0) >= profile.MinGpuVram)
+                .ToList();
 
             var results = new List<BuildResult>();
 
-            // SMART PICK — best combined performance per dollar
-            var smartBuild = TryBuildWithStrategy(
-                budget, profile, gpus, eligibleCpus, rams, motherboards, storages, psus,
-                pairSelector: pairs => pairs
-                    .OrderByDescending(p => (double)(p.Cpu.PerformanceScore + p.Gpu.PerformanceScore)
-                                           / (double)(p.Cpu.Price + p.Gpu.Price))
-                    .FirstOrDefault(),
-                buildType: "Smart Pick",
-                requiredRamGb: profile.ValueRamGb
-            );
-            if (smartBuild != null) results.Add(smartBuild);
+            // Try strict budget first, then with flexibility as fallback
+            var build = TryBuild(budget, budget, profile, eligibleGpus, eligibleCpus, rams, motherboards, storages, psus)
+                     ?? TryBuild(budget, budget + profile.BudgetFlexibility, profile, eligibleGpus, eligibleCpus, rams, motherboards, storages, psus);
 
-            // TOP PICK — highest combined performance score within budget
-            var topBuild = TryBuildWithStrategy(
-                budget, profile, gpus, eligibleCpus, rams, motherboards, storages, psus,
-                pairSelector: pairs => pairs
-                    .OrderByDescending(p => p.Cpu.PerformanceScore + p.Gpu.PerformanceScore)
-                    .FirstOrDefault(),
-                buildType: "Top Pick",
-                requiredRamGb: profile.HighRamGb
-            );
-            if (topBuild != null) results.Add(topBuild);
-
-            return results
-                .GroupBy(r => string.Join(",", r.Parts.Select(p => p.Id).OrderBy(id => id)))
-                .Select(g => g.First())
-                .ToList();
+            if (build != null) results.Add(build);
+            return results;
         }
 
-        private BuildResult? TryBuildWithStrategy(
-            decimal budget,
+        private BuildResult? TryBuild(
+            decimal userBudget,      // original budget — never changes, used for display
+            decimal spendingLimit,   // actual ceiling for part selection and assembly
             WorkloadProfile profile,
             List<Part> gpus,
             List<Part> eligibleCpus,
             List<Part> rams,
             List<Part> motherboards,
             List<Part> storages,
-            List<Part> psus,
-            Func<List<CpuGpuPair>, CpuGpuPair?> pairSelector,
-            string buildType,
-            int requiredRamGb)
+            List<Part> psus)
         {
-            // CPU+GPU get 80% of budget max — leaves 20% for supporting parts
-            // 20% of $800 = $160 — enough for cheap MB+RAM+SSD+PSU
-            // 20% of $1500 = $300 — enough for decent supporting parts
-            decimal maxPrimarySpend = budget * 0.80m;
+            // Pair selection always uses userBudget for the floor
+            // but spendingLimit for the ceiling
+            decimal minPrimarySpend = userBudget <= 700m ? userBudget * 0.42m : userBudget * 0.50m;
+            decimal maxPrimarySpend = spendingLimit * 0.78m;
 
             var pairs = (
                 from c in eligibleCpus
                 from g in gpus
-                where c.Price + g.Price <= maxPrimarySpend
+                where c.Price + g.Price >= minPrimarySpend
+                   && c.Price + g.Price <= maxPrimarySpend
                    && IsBalanced(c, g)
                 select new CpuGpuPair(c, g)
             ).ToList();
 
+            if (pairs.Count == 0)
+            {
+                pairs = (
+                    from c in eligibleCpus
+                    from g in gpus
+                    where c.Price + g.Price >= userBudget * 0.35m
+                       && c.Price + g.Price <= maxPrimarySpend
+                       && IsBalanced(c, g)
+                    select new CpuGpuPair(c, g)
+                ).ToList();
+            }
+
             if (pairs.Count == 0) return null;
 
-            // Strategy picks the ideal pair — but if supporting parts don't fit,
-            // walk down to next best until one assembles successfully
-            var orderedPairs = new List<CpuGpuPair> { pairSelector(pairs)! }
+            CpuGpuPair? bestPair = profile.GpuBudgetRatio >= profile.CpuBudgetRatio
+                ? pairs.OrderByDescending(p => p.Gpu.PerformanceScore * 2 + p.Cpu.PerformanceScore).FirstOrDefault()
+                : pairs.OrderByDescending(p => p.Cpu.PerformanceScore * 2 + p.Gpu.PerformanceScore).FirstOrDefault();
+
+            if (bestPair == null) return null;
+
+            var orderedPairs = new List<CpuGpuPair> { bestPair }
                 .Concat(pairs.OrderByDescending(p => p.Cpu.PerformanceScore + p.Gpu.PerformanceScore))
-                .Where(p => p != null)
                 .Distinct()
                 .ToList();
 
             foreach (var candidate in orderedPairs)
             {
-                var build = TryAssemble(
-                    candidate.Cpu, candidate.Gpu,
-                    budget, profile,
-                    eligibleCpus, rams, motherboards, storages, psus,
-                    requiredRamGb, buildType);
-
+                var build = TryAssemble(candidate.Cpu, candidate.Gpu,
+                    userBudget, spendingLimit, profile,
+                    eligibleCpus, gpus, rams, motherboards, storages, psus);
                 if (build != null) return build;
             }
 
@@ -112,55 +113,64 @@ namespace PcBuilder.Core.Services
         private BuildResult? TryAssemble(
             Part cpu,
             Part gpu,
-            decimal budget,
+            decimal userBudget,    // shown in output, used for budget-aware decisions
+            decimal spendingLimit, // hard ceiling for all spending
             WorkloadProfile profile,
             List<Part> eligibleCpus,
+            List<Part> eligibleGpus,
             List<Part> rams,
             List<Part> motherboards,
             List<Part> storages,
-            List<Part> psus,
-            int requiredRamGb,
-            string buildType)
+            List<Part> psus)
         {
-            decimal remaining = budget - cpu.Price - gpu.Price;
+            decimal remaining = spendingLimit - cpu.Price - gpu.Price;
+            if (remaining <= 0) return null;
 
-            // Supporting part budgets — proportional slices of remaining budget
-            // with hard floors so cheap parts are always reachable
-            decimal mbBudget = Math.Max(Math.Min(remaining * 0.38m, 220m), 65m);
-            decimal storageBudget = Math.Max(Math.Min(remaining * 0.20m, 120m), 55m);
-            decimal psuBudget = Math.Max(Math.Min(remaining * 0.32m, 200m), 90m);
+            bool isLowBudget = userBudget < 900m;
+
+            decimal mbBudget = isLowBudget
+                ? Math.Max(Math.Min(remaining * 0.30m, 130m), 60m)
+                : Math.Max(Math.Min(remaining * 0.38m, 220m), 65m);
+
+            decimal psuBudget = Math.Max(Math.Min(remaining * 0.35m, 220m), 90m);
+            int minStorageGb = userBudget >= 900m ? 1000 : 512;
+            decimal storageBudget = Math.Max(Math.Min(remaining * 0.20m, 130m), userBudget >= 900m ? 70m : 45m);
 
             var mb = FindCompatibleMotherboard(cpu, motherboards, mbBudget);
             if (mb == null) return null;
 
-            var storage = FindStorage(storages, 500, storageBudget);
+            var storage = FindStorage(storages, minStorageGb, storageBudget);
             var psu = FindCompatiblePsu(psus, CalculateRequiredWattage(cpu, gpu), psuBudget);
             if (storage == null || psu == null) return null;
 
-            // Try to find RAM at the required size — if it doesn't fit the budget,
-            // fall back to the next lower tier (64→32→16) so a good CPU+GPU pair
-            // isn't thrown away just because 64GB is too expensive at this budget
-            Part? ram = null;
+            // Budget-aware RAM — gaming scales with budget, others use profile target
+            int targetRamGb = profile.HighRamGb;
+            if (profile.Name == "Gaming")
+                targetRamGb = userBudget >= 700m ? 32 : 16;
+
+            int requiredRamGb = targetRamGb;
             int actualRamGb = requiredRamGb;
+            Part? ram = null;
+
             foreach (int ramGb in new[] { requiredRamGb, 32, 16 })
             {
-                decimal ramBudget = Math.Max(Math.Min(remaining * 0.35m, GetRamCeiling(ramGb)), GetRamFloor(ramGb));
+                decimal ramRatio = isLowBudget ? 0.25m : 0.35m;
+                decimal ramBudget = Math.Max(Math.Min(remaining * ramRatio, GetRamCeiling(ramGb)), GetRamFloor(ramGb));
                 ram = FindCompatibleRam(rams, mb, ramGb, ramBudget);
                 if (ram != null) { actualRamGb = ramGb; break; }
             }
             if (ram == null) return null;
 
             decimal total = cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price;
-            if (total > budget) return null;
+            if (total > spendingLimit) return null;
 
-            // Spend leftover upgrading primary parts first
-            decimal leftover = budget - total;
+            // Spend leftover upgrading parts — leftover calculated against spendingLimit
+            decimal leftover = spendingLimit - total;
 
             if (profile.GpuBudgetRatio >= profile.CpuBudgetRatio)
             {
-                // Gaming / AI: GPU first, then CPU
-                gpu = UpgradeBalancedGpu(gpu, cpu, gpus: _repository.GetByType("GPU").ToList(), leftover) ?? gpu;
-                leftover = budget - (cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price);
+                gpu = UpgradeBalancedGpu(gpu, cpu, eligibleGpus, leftover) ?? gpu;
+                leftover = spendingLimit - (cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price);
 
                 var betterCpu = TryUpgradeCpu(cpu, eligibleCpus, motherboards, mbBudget, leftover);
                 if (betterCpu != null && IsBalanced(betterCpu, gpu))
@@ -169,11 +179,10 @@ namespace PcBuilder.Core.Services
                     mb = FindCompatibleMotherboard(cpu, motherboards, mbBudget) ?? mb;
                     ram = FindCompatibleRam(rams, mb, actualRamGb, GetRamCeiling(actualRamGb)) ?? ram;
                 }
-                leftover = budget - (cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price);
+                leftover = spendingLimit - (cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price);
             }
             else
             {
-                // Video Editing: CPU first, then GPU
                 var betterCpu = TryUpgradeCpu(cpu, eligibleCpus, motherboards, mbBudget, leftover);
                 if (betterCpu != null && IsBalanced(betterCpu, gpu))
                 {
@@ -181,41 +190,34 @@ namespace PcBuilder.Core.Services
                     mb = FindCompatibleMotherboard(cpu, motherboards, mbBudget) ?? mb;
                     ram = FindCompatibleRam(rams, mb, actualRamGb, GetRamCeiling(actualRamGb)) ?? ram;
                 }
-                leftover = budget - (cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price);
+                leftover = spendingLimit - (cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price);
 
-                gpu = UpgradeBalancedGpu(gpu, cpu, gpus: _repository.GetByType("GPU").ToList(), leftover) ?? gpu;
-                leftover = budget - (cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price);
+                gpu = UpgradeBalancedGpu(gpu, cpu, eligibleGpus, leftover) ?? gpu;
+                leftover = spendingLimit - (cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price);
             }
 
-            // Upgrade secondary parts with remaining leftover
-            decimal ramUpgradeBudget = Math.Max(Math.Min(remaining * 0.35m, GetRamCeiling(requiredRamGb)), GetRamFloor(requiredRamGb));
-            ram = UpgradeRam(ram, mb, rams, Math.Min(leftover, ramUpgradeBudget - ram.Price)) ?? ram;
-            leftover = budget - (cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price);
+            decimal ramRatioCap = isLowBudget ? 0.25m : 0.35m;
+            decimal ramUpgradeCap = Math.Max(Math.Min(remaining * ramRatioCap, GetRamCeiling(requiredRamGb)), GetRamFloor(requiredRamGb));
+            ram = UpgradeRam(ram, mb, rams, Math.Min(leftover, ramUpgradeCap - ram.Price)) ?? ram;
+            leftover = spendingLimit - (cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price);
 
             storage = UpgradeStorage(storage, storages, Math.Min(leftover, storageBudget - storage.Price)) ?? storage;
-            leftover = budget - (cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price);
+            leftover = spendingLimit - (cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price);
 
             psu = FindCompatiblePsu(psus, CalculateRequiredWattage(cpu, gpu),
                       Math.Min(psu.Price + leftover, psuBudget)) ?? psu;
 
             total = cpu.Price + gpu.Price + mb.Price + ram.Price + storage.Price + psu.Price;
-            if (total > budget) return null;
+            if (total > spendingLimit) return null;
 
             return new BuildResult
             {
-                BuildType = buildType,
+                BuildType = "Recommended Build",
                 Parts = new List<Part> { cpu, gpu, ram, mb, storage, psu },
                 TotalPrice = total
             };
         }
 
-        // GPU price must be 0.5x–3.0x CPU price
-        // Tighter upper bound prevents weak CPUs being paired with high-end GPUs
-        // Examples:
-        //   $90  i3  → GPU $45–$270  (blocks RTX 3070 at $340) ✓
-        //   $150 R5  → GPU $75–$450  (allows RTX 3070) ✓
-        //   $190 i5  → GPU $95–$570  (allows RTX 3080) ✓
-        //   $270 R9  → GPU $135–$810 (allows RTX 4080) ✓
         private bool IsBalanced(Part cpu, Part gpu)
         {
             return gpu.Price >= cpu.Price * 0.5m
@@ -225,12 +227,10 @@ namespace PcBuilder.Core.Services
         private decimal GetRamCeiling(int gb) => gb >= 64 ? 280m : gb >= 32 ? 160m : 100m;
         private decimal GetRamFloor(int gb) => gb >= 64 ? 200m : gb >= 32 ? 85m : 40m;
 
-        // Only upgrade CPU if a compatible MB exists within budget for the new socket
         private Part? TryUpgradeCpu(Part current, List<Part> eligibleCpus, List<Part> motherboards, decimal mbBudget, decimal leftover)
         {
             if (leftover <= 0) return null;
             decimal maxPrice = current.Price + leftover;
-
             return eligibleCpus
                 .Where(c => c.Price > current.Price && c.Price <= maxPrice)
                 .OrderByDescending(c => c.PerformanceScore)
@@ -264,14 +264,11 @@ namespace PcBuilder.Core.Services
         {
             if (leftover <= 0) return current;
             decimal maxPrice = current.Price + leftover;
-
             var candidates = storages
                 .Where(s => s.CapacityGb >= current.CapacityGb
                          && s.Price > current.Price
                          && s.Price <= maxPrice)
                 .ToList();
-
-            // Prefer NVMe over SATA
             return candidates
                 .Where(s => s.Name.Contains("NVMe", StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(s => s.PerformanceScore)
