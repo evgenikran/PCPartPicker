@@ -30,7 +30,7 @@ namespace PcBuilder.Core.Profiles
             BalancedRamGb = 32,
             HighRamGb = 32,
             MaxCpuScore = 0,
-            MaxCpuBudgetRatio = 0.25m,
+            MaxCpuBudgetRatio = 0.28m,
             RequiredGpuBrand = null,
             MinGpuScore = 0,
             MinGpuVram = 0,

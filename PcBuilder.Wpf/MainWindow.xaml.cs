@@ -71,14 +71,8 @@ namespace PcBuilder.Wpf
             var sb = new StringBuilder();
             foreach (var build in builds)
             {
-                decimal overage = build.TotalPrice - budget;
-
                 sb.AppendLine($"Build type: {build.BuildType}");
                 sb.AppendLine($"Total price: ${build.TotalPrice:F2}");
-
-                // Inform user if build slightly exceeds their budget
-                if (overage > 0)
-                    sb.AppendLine($"  ⚠ ${overage:F2} over your budget of ${budget:F2}");
 
                 foreach (var part in build.Parts)
                     sb.AppendLine($"  - {part.Type}: {part.Name} (${part.Price:F2})");
