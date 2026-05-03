@@ -152,8 +152,8 @@ namespace PcBuilder.Core.Services
             decimal psuBudget = Math.Max(Math.Min(remaining * 0.40m, 220m), 90m);
             // Storage minimum scales with budget
             int minStorageGb = userBudget >= 1500m ? 2000
-                             : userBudget >= 900m ? 1000
-                             : 512;
+                 : (userBudget >= 900m || profile.Name != "Gaming") ? 1000
+                 : 512;
             decimal minStorageBudgetFloor = userBudget >= 1500m ? 100m
                                           : userBudget >= 900m ? 70m
                                           : 45m;

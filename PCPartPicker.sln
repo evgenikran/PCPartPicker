@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PcBuilder.Wpf", "PcBuilder.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PcBuilder.Infrastructure", "PcBuilder.Infrastructure\PcBuilder.Infrastructure.csproj", "{ACF5DF46-46AD-4F0A-9AEE-1B6466E7D440}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PcBuilder.Api", "PcBuilder.Api\PcBuilder.Api.csproj", "{D1EA9C15-D4AD-42BD-BA13-4493854FA559}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{ACF5DF46-46AD-4F0A-9AEE-1B6466E7D440}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ACF5DF46-46AD-4F0A-9AEE-1B6466E7D440}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{ACF5DF46-46AD-4F0A-9AEE-1B6466E7D440}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D1EA9C15-D4AD-42BD-BA13-4493854FA559}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D1EA9C15-D4AD-42BD-BA13-4493854FA559}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D1EA9C15-D4AD-42BD-BA13-4493854FA559}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D1EA9C15-D4AD-42BD-BA13-4493854FA559}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
