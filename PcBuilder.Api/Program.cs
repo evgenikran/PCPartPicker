@@ -37,8 +37,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseCors("AllowReact");  // Move this FIRST
 app.UseHttpsRedirection();
-app.UseCors("AllowReact");
 app.UseAuthorization();
 app.MapControllers();
 
