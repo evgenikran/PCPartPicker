@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import './App.css'
 
-const API_URL = 'http://38.180.236.130:5000/api/Build/generate'
+const API_URL = 'http://38.180.236.130:8080/api/Build/generate'
 
 const WORKLOADS = ['Gaming', 'Video Editing', 'AI']
 
