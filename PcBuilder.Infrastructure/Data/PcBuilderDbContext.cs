@@ -1,35 +1,38 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using PcBuilder.Core.Models;
-using System.Collections.Generic;
-using System.Reflection.Emit;
 
 namespace PcBuilder.Infrastructure.Data
 {
     public class PcBuilderDbContext : DbContext
     {
         public PcBuilderDbContext(DbContextOptions<PcBuilderDbContext> options)
-            : base(options)
-        {
-        }
+            : base(options) { }
 
-        public DbSet<Part> Parts => Set<Part>();
+        public DbSet<Part> Parts { get; set; }
+        public DbSet<User> Users { get; set; }
+        public DbSet<SavedBuild> SavedBuilds { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<Part>(entity =>
+            modelBuilder.Entity<User>(e =>
             {
-                entity.HasKey(p => p.Id);
+                e.HasKey(u => u.Id);
+                e.HasIndex(u => u.Email).IsUnique();
+                e.Property(u => u.Email).HasMaxLength(200).IsRequired();
+                e.Property(u => u.Username).HasMaxLength(100).IsRequired();
+                e.Property(u => u.PasswordHash).HasMaxLength(500).IsRequired();
+            });
 
-                entity.Property(p => p.Type)
-                      .IsRequired()
-                      .HasMaxLength(50);
-
-                entity.Property(p => p.Name)
-                      .IsRequired()
-                      .HasMaxLength(200);
-
-                entity.Property(p => p.Price)
-                      .HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<SavedBuild>(e =>
+            {
+                e.HasKey(b => b.Id);
+                e.HasOne(b => b.User)
+                 .WithMany(u => u.SavedBuilds)
+                 .HasForeignKey(b => b.UserId)
+                 .OnDelete(DeleteBehavior.Cascade);
+                e.Property(b => b.Name).HasMaxLength(200);
+                e.Property(b => b.Workload).HasMaxLength(50).IsRequired();
+                e.Property(b => b.PartsJson).IsRequired();
             });
         }
     }
