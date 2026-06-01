@@ -51,18 +51,20 @@ namespace PcBuilder.Api.Controllers
             var build = builds[0];
 
             // Get AI review
-            var review = await _aiReview.ReviewBuildAsync(build, profile.Name, request.Budget);
+            //var review = await _aiReview.ReviewBuildAsync(build, profile.Name, request.Budget);
 
             var response = new
             {
                 buildType = build.BuildType,
                 totalPrice = build.TotalPrice,
-                aiReview = review,
+                //aiReview = review,
                 parts = build.Parts.Select(p => new
                 {
                     type = p.Type,
                     name = p.Name,
-                    price = p.Price
+                    price = p.Price,
+                    performanceScore = p.PerformanceScore
+
                 })
             };
 

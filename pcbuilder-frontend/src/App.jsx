@@ -4,7 +4,6 @@ import './App.css'
 
 const BASE_URL = 'http://localhost:5223'
 
-// ─── Auth Context ─────────────────────────────────────────────────────────────
 const AuthContext = createContext(null)
 
 function AuthProvider({ children }) {
@@ -23,8 +22,6 @@ function Protected({ children }) {
   const { user } = useAuth()
   return user ? children : <Navigate to="/login" replace />
 }
-
-// ─── Nav ──────────────────────────────────────────────────────────────────────
 
 function Nav() {
   const { user, logout } = useAuth()
@@ -49,10 +46,10 @@ function Nav() {
     </nav>
   )
 }
-// ─── Constants ────────────────────────────────────────────────────────────────
-const WORKLOADS     = ['Gaming', 'Video Editing', 'AI']
+
+const WORKLOADS      = ['Gaming', 'Video Editing', 'AI']
 const WORKLOAD_ICONS = { 'Gaming': '🎮', 'Video Editing': '🎬', 'AI': '🤖' }
-const PART_CONFIG   = {
+const PART_CONFIG    = {
   'CPU':         { icon: '⚙️',  color: '#00e5ff' },
   'GPU':         { icon: '🖥️',  color: '#a855f7' },
   'RAM':         { icon: '💾',  color: '#00ff88' },
@@ -77,14 +74,14 @@ function parseReview(text) {
 
 // ─── Home ─────────────────────────────────────────────────────────────────────
 function HomePage() {
-  const { user }                     = useAuth()
-  const [budget,   setBudget]        = useState('')
-  const [workload, setWorkload]      = useState('Gaming')
-  const [build,    setBuild]         = useState(null)
-  const [loading,  setLoading]       = useState(false)
-  const [error,    setError]         = useState('')
-  const [saved,    setSaved]         = useState(false)
-  const [saving,   setSaving]        = useState(false)
+  const { user }                = useAuth()
+  const [budget,   setBudget]   = useState('')
+  const [workload, setWorkload] = useState('Gaming')
+  const [build,    setBuild]    = useState(null)
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState('')
+  const [saved,    setSaved]    = useState(false)
+  const [saving,   setSaving]   = useState(false)
 
   async function handleGenerate() {
     if (!budget || isNaN(budget) || Number(budget) <= 0) { setError('Please enter a valid budget.'); return }
@@ -304,11 +301,13 @@ function RegisterPage() {
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 function ProfilePage() {
-  const { user }             = useAuth()
-  const navigate             = useNavigate()
-  const [builds,   setBuilds]   = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [selected, setSelected] = useState([])
+  const { user }               = useAuth()
+  const navigate               = useNavigate()
+  const [builds,    setBuilds]    = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [selected,  setSelected]  = useState([])
+  const [inspecting, setInspecting] = useState(null)
+  const [message, setMessage] = useState('')
 
   useEffect(() => {
     async function fetchBuilds() {
@@ -320,13 +319,25 @@ function ProfilePage() {
     fetchBuilds()
   }, [])
 
-  async function handleDelete(id) {
-    const res = await fetch(`${BASE_URL}/api/SavedBuilds/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } })
-    if (res.ok) setBuilds(prev => prev.filter(b => b.id !== id))
+async function handleDelete(id) {
+  const res = await fetch(`${BASE_URL}/api/SavedBuilds/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } })
+  if (res.ok) {
+    setBuilds(prev => prev.filter(b => b.id !== id))
+    if (inspecting === id) setInspecting(null)
+    setMessage('Build deleted successfully.')
+  } else {
+    setMessage('Failed to delete build.')
   }
+  setTimeout(() => setMessage(''), 5000)
+}
 
   function toggleSelect(id) {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : prev.length < 2 ? [...prev, id] : prev)
+  }
+
+  function toggleInspect(e, id) {
+    e.stopPropagation()
+    setInspecting(prev => prev === id ? null : id)
   }
 
   return (
@@ -337,18 +348,18 @@ function ProfilePage() {
           <p className="profile-sub">{user.email}</p>
         </div>
       </div>
+{selected.length > 0 && (
+  <div className="compare-bar">
+    <span>{selected.length} build{selected.length > 1 ? 's' : ''} selected</span>
+    <button className="generate-btn" style={{ padding: '10px 24px', fontSize: '14px' }}
+      onClick={() => navigate(`/compare?id1=${selected[0]}&id2=${selected[1]}`)} disabled={selected.length < 2}>
+      Compare Selected →
+    </button>
+    <button className="nav-btn" onClick={() => setSelected([])}>Clear</button>
+  </div>
+)}
 
-      {selected.length > 0 && (
-        <div className="compare-bar">
-          <span>{selected.length} build{selected.length > 1 ? 's' : ''} selected</span>
-          <button className="generate-btn" style={{ padding: '10px 24px', fontSize: '14px' }}
-            onClick={() => navigate(`/compare?id1=${selected[0]}&id2=${selected[1]}`)} disabled={selected.length < 2}>
-            Compare Selected →
-          </button>
-          <button className="nav-btn" onClick={() => setSelected([])}>Clear</button>
-        </div>
-      )}
-
+{message && <div className="success-card">✓ {message}</div>}
       {loading ? (
         <div className="loading-text">Loading builds...</div>
       ) : builds.length === 0 ? (
@@ -359,23 +370,44 @@ function ProfilePage() {
       ) : (
         <div className="builds-grid">
           {builds.map(b => (
-            <div key={b.id} className={`build-card ${selected.includes(b.id) ? 'selected' : ''}`} onClick={() => toggleSelect(b.id)}>
-              <div className="build-card-header">
-                <span className="build-workload">{WORKLOAD_ICONS[b.workload]} {b.workload}</span>
-                <span className="build-price">${b.totalPrice.toFixed(2)}</span>
+            <div key={b.id}>
+              <div className={`build-card ${selected.includes(b.id) ? 'selected' : ''}`} onClick={() => toggleSelect(b.id)}>
+                <div className="build-card-header">
+                  <span className="build-workload">{WORKLOAD_ICONS[b.workload]} {b.workload}</span>
+                  <span className="build-price">${b.totalPrice.toFixed(2)}</span>
+                </div>
+                <div className="build-name">{b.name}</div>
+                <div className="build-date">{new Date(b.createdAt).toLocaleDateString()}</div>
+                <div className="build-parts-preview">
+                  {b.parts?.slice(0, 3).map((p, i) => (
+                    <div key={i} className="build-part-row">
+                      <span style={{ color: PART_CONFIG[p.type]?.color || '#888' }}>{p.type}</span>
+                      <span>{p.name}</span>
+                    </div>
+                  ))}
+                </div>
+                {selected.includes(b.id) && <div className="selected-badge">✓ Selected for Compare</div>}
+                <div className="build-card-actions">
+                  <button className="inspect-btn" onClick={e => toggleInspect(e, b.id)}>
+                    {inspecting === b.id ? '▲ Close' : '▼ Inspect'}
+                  </button>
+                  <button className="delete-btn" onClick={e => { e.stopPropagation(); if (window.confirm('Are you sure you want to delete this build?')) handleDelete(b.id) }}>✕ Delete</button>
+                </div>
               </div>
-              <div className="build-name">{b.name}</div>
-              <div className="build-date">{new Date(b.createdAt).toLocaleDateString()}</div>
-              <div className="build-parts-preview">
-                {b.parts?.slice(0, 3).map((p, i) => (
-                  <div key={i} className="build-part-row">
-                    <span style={{ color: PART_CONFIG[p.type]?.color || '#888' }}>{p.type}</span>
-                    <span>{p.name}</span>
-                  </div>
-                ))}
-              </div>
-              {selected.includes(b.id) && <div className="selected-badge">✓ Selected for Compare</div>}
-              <button className="delete-btn" onClick={e => { e.stopPropagation(); handleDelete(b.id) }}>✕ Delete</button>
+
+              {inspecting === b.id && (
+                <div className="inspect-panel">
+                  <div className="inspect-title">Full Build — {b.name}</div>
+                  {b.parts?.map((p, i) => (
+                    <div key={i} className="inspect-part">
+                      <span style={{ color: PART_CONFIG[p.type]?.color || '#888' }}>{PART_CONFIG[p.type]?.icon} {p.type}</span>
+                      <span className="inspect-part-name">{p.name}</span>
+                      <span className="inspect-part-price">${p.price.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <div className="inspect-total">Total: ${b.totalPrice.toFixed(2)}</div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -398,7 +430,9 @@ function ComparePage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`${BASE_URL}/api/SavedBuilds/compare?id1=${id1}&id2=${id2}`, { headers: { 'Authorization': `Bearer ${user.token}` } })
+        const res = await fetch(`${BASE_URL}/api/SavedBuilds/compare?id1=${id1}&id2=${id2}`, {
+          headers: { 'Authorization': `Bearer ${user.token}` }
+        })
         if (!res.ok) { setError('Could not load builds.'); return }
         setData(await res.json())
       } catch { setError('Could not reach the server.') } finally { setLoading(false) }
@@ -411,79 +445,210 @@ function ComparePage() {
 
   const PART_TYPES = ['CPU', 'GPU', 'RAM', 'Motherboard', 'Storage', 'PSU']
 
+  const WEIGHTS = {
+    'Gaming':        { GPU: 0.70, CPU: 0.20, RAM: 0.05, Storage: 0.025, PSU: 0.025, Motherboard: 0 },
+    'Video Editing': { CPU: 0.50, GPU: 0.30, RAM: 0.15, Storage: 0.05,  PSU: 0,     Motherboard: 0 },
+    'AI':            { GPU: 0.75, CPU: 0.08, RAM: 0.15, Storage: 0.02,  PSU: 0,     Motherboard: 0 },
+  }
+
+  function getWeightedScore(build) {
+    const weights = WEIGHTS[build.workload] || WEIGHTS['Gaming']
+    return build.parts?.reduce((sum, p) => sum + (p.performanceScore || 0) * (weights[p.type] || 0), 0) || 0
+  }
+
+  const ws1      = getWeightedScore(data.build1)
+  const ws2      = getWeightedScore(data.build2)
+  const maxWs    = Math.max(ws1, ws2, 1)
+  const bar1     = Math.round((ws1 / maxWs) * 100)
+  const bar2     = Math.round((ws2 / maxWs) * 100)
+  const perfWin  = ws1 > ws2 ? 1 : ws2 > ws1 ? 2 : 0
+  const priceWin = data.build1.totalPrice < data.build2.totalPrice ? 1 : data.build2.totalPrice < data.build1.totalPrice ? 2 : 0
+  const val1     = data.build1.totalPrice > 0 ? (ws1 / data.build1.totalPrice).toFixed(2) : '0'
+  const val2     = data.build2.totalPrice > 0 ? (ws2 / data.build2.totalPrice).toFixed(2) : '0'
+  const valWin   = parseFloat(val1) > parseFloat(val2) ? 1 : parseFloat(val2) > parseFloat(val1) ? 2 : 0
+  const weights1 = WEIGHTS[data.build1.workload] || WEIGHTS['Gaming']
+  const weights2 = WEIGHTS[data.build2.workload] || WEIGHTS['Gaming']
+
   return (
     <div className="page">
       <div className="compare-header">
-        <button className="nav-link" onClick={() => navigate('/profile')}>← Back to Profile</button>
+        <button className="back-btn" onClick={() => navigate('/profile')}>← Back to Profile</button>
         <h2 className="profile-title">Build Comparison</h2>
       </div>
 
-      <div className="compare-table">
-        <div className="compare-row compare-head">
-          <div className="compare-cell label-cell">COMPONENT</div>
-          <div className="compare-cell">{data.build1.name}</div>
-          <div className="compare-cell">{data.build2.name}</div>
+      <div className="cmp-perf-card">
+        <div className="cmp-perf-title">Performance Index</div>
+        <div className="cmp-perf-subtitle">Weighted by workload — GPU dominates Gaming (70%), CPU dominates Video Editing (50%)</div>
+
+        <div className="cmp-bar-section">
+          <div className="cmp-bar-label">
+            <span>{data.build1.name}</span>
+            <div style={{display:'flex',gap:'10px',alignItems:'center'}}>
+              <span className="cmp-bar-score">{Math.round(ws1)} pts</span>
+              {perfWin === 1 && <span className="cmp-win-tag">✓ Higher</span>}
+            </div>
+          </div>
+          <div className="cmp-bar-track">
+            <div className="cmp-bar-fill" style={{ width: `${bar1}%`, background: perfWin === 1 ? 'var(--success)' : 'var(--accent)' }} />
+          </div>
+          <div className="cmp-bar-workload">{WORKLOAD_ICONS[data.build1.workload]} {data.build1.workload}</div>
         </div>
 
-        <div className="compare-row highlight-row">
-          <div className="compare-cell label-cell">TOTAL PRICE</div>
-          <div className={`compare-cell ${data.build1.totalPrice <= data.build2.totalPrice ? 'winner' : ''}`}>
-            ${data.build1.totalPrice.toFixed(2)}
-            {data.build1.totalPrice < data.build2.totalPrice && <span className="win-badge">✓ Cheaper</span>}
+        <div className="cmp-bar-section">
+          <div className="cmp-bar-label">
+            <span>{data.build2.name}</span>
+            <div style={{display:'flex',gap:'10px',alignItems:'center'}}>
+              <span className="cmp-bar-score">{Math.round(ws2)} pts</span>
+              {perfWin === 2 && <span className="cmp-win-tag">✓ Higher</span>}
+            </div>
           </div>
-          <div className={`compare-cell ${data.build2.totalPrice <= data.build1.totalPrice ? 'winner' : ''}`}>
-            ${data.build2.totalPrice.toFixed(2)}
-            {data.build2.totalPrice < data.build1.totalPrice && <span className="win-badge">✓ Cheaper</span>}
+          <div className="cmp-bar-track">
+            <div className="cmp-bar-fill" style={{ width: `${bar2}%`, background: perfWin === 2 ? 'var(--success)' : 'var(--accent)' }} />
+          </div>
+          <div className="cmp-bar-workload">{WORKLOAD_ICONS[data.build2.workload]} {data.build2.workload}</div>
+        </div>
+
+        <div className="cmp-perf-diff">
+          {Math.abs(ws1 - ws2) <= 0.5
+            ? 'Builds are virtually identical in performance'
+            : perfWin === 1
+            ? `${data.build1.name} is ${Math.round((ws1 / ws2 - 1) * 100)}% higher performance`
+            : `${data.build2.name} is ${Math.round((ws2 / ws1 - 1) * 100)}% higher performance`}
+        </div>
+      </div>
+
+      <div className="cmp-summary">
+        <div className="cmp-build-col">
+          <div className="cmp-build-name">{data.build1.name}</div>
+          <div className="cmp-build-workload">{WORKLOAD_ICONS[data.build1.workload]} {data.build1.workload}</div>
+          <div className="cmp-metrics">
+            <div className={`cmp-metric ${perfWin === 1 ? 'cmp-metric-win' : ''}`}>
+              <div className="cmp-metric-label">Performance</div>
+              <div className="cmp-metric-value">{Math.round(ws1)} pts</div>
+              {perfWin === 1 && <div className="cmp-metric-badge">✓ Winner</div>}
+            </div>
+            <div className={`cmp-metric ${priceWin === 1 ? 'cmp-metric-win' : ''}`}>
+              <div className="cmp-metric-label">Price</div>
+              <div className="cmp-metric-value">${data.build1.totalPrice.toFixed(2)}</div>
+              {priceWin === 1 && <div className="cmp-metric-badge">✓ Cheaper</div>}
+            </div>
+            <div className={`cmp-metric ${valWin === 1 ? 'cmp-metric-win' : ''}`}>
+              <div className="cmp-metric-label">Value</div>
+              <div className="cmp-metric-value">{val1} pts/$</div>
+              {valWin === 1 && <div className="cmp-metric-badge">✓ Better</div>}
+            </div>
           </div>
         </div>
 
-        <div className="compare-row">
-          <div className="compare-cell label-cell">WORKLOAD</div>
-          <div className="compare-cell">{WORKLOAD_ICONS[data.build1.workload]} {data.build1.workload}</div>
-          <div className="compare-cell">{WORKLOAD_ICONS[data.build2.workload]} {data.build2.workload}</div>
+        <div className="cmp-vs">VS</div>
+
+        <div className="cmp-build-col">
+          <div className="cmp-build-name">{data.build2.name}</div>
+          <div className="cmp-build-workload">{WORKLOAD_ICONS[data.build2.workload]} {data.build2.workload}</div>
+          <div className="cmp-metrics">
+            <div className={`cmp-metric ${perfWin === 2 ? 'cmp-metric-win' : ''}`}>
+              <div className="cmp-metric-label">Performance</div>
+              <div className="cmp-metric-value">{Math.round(ws2)} pts</div>
+              {perfWin === 2 && <div className="cmp-metric-badge">✓ Winner</div>}
+            </div>
+            <div className={`cmp-metric ${priceWin === 2 ? 'cmp-metric-win' : ''}`}>
+              <div className="cmp-metric-label">Price</div>
+              <div className="cmp-metric-value">${data.build2.totalPrice.toFixed(2)}</div>
+              {priceWin === 2 && <div className="cmp-metric-badge">✓ Cheaper</div>}
+            </div>
+            <div className={`cmp-metric ${valWin === 2 ? 'cmp-metric-win' : ''}`}>
+              <div className="cmp-metric-label">Value</div>
+              <div className="cmp-metric-value">{val2} pts/$</div>
+              {valWin === 2 && <div className="cmp-metric-badge">✓ Better</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="cmp-table">
+        <div className="cmp-table-head">
+          <div className="cmp-col-label">Component</div>
+          <div className="cmp-col-build">{data.build1.name}</div>
+          <div className="cmp-col-build">{data.build2.name}</div>
         </div>
 
         {PART_TYPES.map(type => {
           const p1    = data.build1.parts?.find(p => p.type === type)
           const p2    = data.build2.parts?.find(p => p.type === type)
           const color = PART_CONFIG[type]?.color || '#888'
+          const s1    = p1?.performanceScore || 0
+          const s2    = p2?.performanceScore || 0
+          const w     = weights1[type] || weights2[type] || 0
+          const pw1   = (s1 * (weights1[type] || 0)) > (s2 * (weights2[type] || 0))
+          const pw2   = (s2 * (weights2[type] || 0)) > (s1 * (weights1[type] || 0))
+
           return (
-            <div className="compare-row" key={type}>
-              <div className="compare-cell label-cell" style={{ color }}>{PART_CONFIG[type]?.icon} {type}</div>
-              <div className="compare-cell">
-                <div className="compare-part-name">{p1?.name || '—'}</div>
-                {p1 && <div className="compare-part-price">${p1.price.toFixed(2)}</div>}
+            <div className="cmp-table-row" key={type}>
+              <div className="cmp-col-label">
+                <span style={{ color, marginRight: '6px' }}>{PART_CONFIG[type]?.icon}</span>
+                <div>
+                  <div style={{ color, fontSize: '11px', letterSpacing: '1px' }}>{type}</div>
+                  {w > 0 && <div style={{ fontSize: '10px', color: 'var(--dim)' }}>Weight: {Math.round(w * 100)}%</div>}
+                </div>
               </div>
-              <div className="compare-cell">
-                <div className="compare-part-name">{p2?.name || '—'}</div>
-                {p2 && <div className="compare-part-price">${p2.price.toFixed(2)}</div>}
+              <div className={`cmp-col-build ${pw1 ? 'cmp-cell-win' : ''}`}>
+                {p1 ? (
+                  <>
+                    <div className="cmp-part-name">{p1.name}</div>
+                    <div className="cmp-part-footer">
+                      <span className="cmp-part-price">${p1.price.toFixed(2)}</span>
+                      {s1 > 0 && <span className="cmp-part-score">{s1} pts</span>}
+                      {pw1 && <span className="cmp-win-tag">✓ Better</span>}
+                    </div>
+                  </>
+                ) : <span style={{ color: 'var(--dim)' }}>—</span>}
+              </div>
+              <div className={`cmp-col-build ${pw2 ? 'cmp-cell-win' : ''}`}>
+                {p2 ? (
+                  <>
+                    <div className="cmp-part-name">{p2.name}</div>
+                    <div className="cmp-part-footer">
+                      <span className="cmp-part-price">${p2.price.toFixed(2)}</span>
+                      {s2 > 0 && <span className="cmp-part-score">{s2} pts</span>}
+                      {pw2 && <span className="cmp-win-tag">✓ Better</span>}
+                    </div>
+                  </>
+                ) : <span style={{ color: 'var(--dim)' }}>—</span>}
               </div>
             </div>
           )
         })}
+
+        <div className="cmp-table-total">
+          <div className="cmp-col-label">◆ Weighted Score</div>
+          <div className={`cmp-col-build ${perfWin === 1 ? 'cmp-cell-win' : ''}`}>
+            <span className="cmp-total-score">{Math.round(ws1)} pts</span>
+            {perfWin === 1 && <span className="cmp-win-tag">✓ Higher</span>}
+          </div>
+          <div className={`cmp-col-build ${perfWin === 2 ? 'cmp-cell-win' : ''}`}>
+            <span className="cmp-total-score">{Math.round(ws2)} pts</span>
+            {perfWin === 2 && <span className="cmp-win-tag">✓ Higher</span>}
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
-// ─── Parts Page ───────────────────────────────────────────────────────────────
+// ─── Parts ────────────────────────────────────────────────────────────────────
 const PART_TYPES = ['CPU', 'GPU', 'Motherboard', 'RAM', 'Storage', 'PSU']
-
-
-const EMPTY_PART = {
-  type: 'GPU', name: '', price: '', performanceScore: '',
-  socket: '', ramType: '', sizeGb: '', capacityGb: '', wattage: '', imageUrl: ''
-}
+const EMPTY_PART = { type: 'GPU', name: '', price: '', performanceScore: '', socket: '', ramType: '', sizeGb: '', capacityGb: '', wattage: '', imageUrl: '' }
 
 function PartsPage() {
-  const [parts,     setParts]     = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [filter,    setFilter]    = useState('All')
-  const [showForm,  setShowForm]  = useState(false)
-  const [editId,    setEditId]    = useState(null)
-  const [form,      setForm]      = useState(EMPTY_PART)
-  const [error,     setError]     = useState('')
-  const [success,   setSuccess]   = useState('')
+  const [parts,    setParts]    = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [filter,   setFilter]   = useState('All')
+  const [showForm, setShowForm] = useState(false)
+  const [editId,   setEditId]   = useState(null)
+  const [form,     setForm]     = useState(EMPTY_PART)
+  const [error,    setError]    = useState('')
+  const [success,  setSuccess]  = useState('')
+ 
 
   useEffect(() => { fetchParts() }, [])
 
@@ -498,23 +663,11 @@ function PartsPage() {
   async function handleSave() {
     setError(''); setSuccess('')
     if (!form.name || !form.type || !form.price) { setError('Name, Type and Price are required.'); return }
-
-    const body = {
-      ...form,
-      price:            Number(form.price),
-      performanceScore: Number(form.performanceScore) || 0,
-      sizeGb:           form.sizeGb      ? Number(form.sizeGb)      : null,
-      capacityGb:       form.capacityGb  ? Number(form.capacityGb)  : null,
-      wattage:          form.wattage     ? Number(form.wattage)      : null,
-    }
-
-    const url    = editId ? `${BASE_URL}/api/Parts/${editId}` : `${BASE_URL}/api/Parts`
+    const body = { ...form, price: Number(form.price), performanceScore: Number(form.performanceScore) || 0, sizeGb: form.sizeGb ? Number(form.sizeGb) : null, capacityGb: form.capacityGb ? Number(form.capacityGb) : null, wattage: form.wattage ? Number(form.wattage) : null }
+    const url = editId ? `${BASE_URL}/api/Parts/${editId}` : `${BASE_URL}/api/Parts`
     const method = editId ? 'PUT' : 'POST'
-
     try {
-      const res = await fetch(url, {
-        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-      })
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!res.ok) { const e = await res.json(); setError(e.error || 'Failed.'); return }
       setSuccess(editId ? 'Part updated!' : 'Part added!')
       setShowForm(false); setEditId(null); setForm(EMPTY_PART)
@@ -522,30 +675,19 @@ function PartsPage() {
     } catch { setError('Could not reach the server.') }
   }
 
-  async function handleDelete(id) {
-    if (!window.confirm('Delete this part?')) return
-    try {
-      const res = await fetch(`${BASE_URL}/api/Parts/${id}`, { method: 'DELETE' })
-      if (res.ok) { setParts(prev => prev.filter(p => p.id !== id)); setSuccess('Part deleted.') }
-    } catch { setError('Could not delete part.') }
-  }
+ async function handleDelete(id) {
+	  const res = await fetch(`${BASE_URL}/api/SavedBuilds/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } })
+  if (res.ok) {
+    setBuilds(prev => prev.filter(b => b.id !== id))
+    if (inspecting === id) setInspecting(null)
+    setMessage('Build deleted successfully.')
+    setTimeout(() => setMessage(''), 3000)
+   }
+ }
 
   function handleEdit(part) {
-    setForm({
-      type:             part.type,
-      name:             part.name,
-      price:            part.price,
-      performanceScore: part.performanceScore,
-      socket:           part.socket    || '',
-      ramType:          part.ramType   || '',
-      sizeGb:           part.sizeGb    || '',
-      capacityGb:       part.capacityGb || '',
-      wattage:          part.wattage   || '',
-      imageUrl:         part.imageUrl  || ''
-    })
-    setEditId(part.id)
-    setShowForm(true)
-    setError(''); setSuccess('')
+    setForm({ type: part.type, name: part.name, price: part.price, performanceScore: part.performanceScore, socket: part.socket || '', ramType: part.ramType || '', sizeGb: part.sizeGb || '', capacityGb: part.capacityGb || '', wattage: part.wattage || '', imageUrl: part.imageUrl || '' })
+    setEditId(part.id); setShowForm(true); setError(''); setSuccess('')
   }
 
   const filtered = filter === 'All' ? parts : parts.filter(p => p.type === filter)
@@ -566,61 +708,41 @@ function PartsPage() {
       {error   && <div className="error-card">⚠ {error}</div>}
       {success && <div className="success-card">✓ {success}</div>}
 
-      {/* Add / Edit Form */}
       {showForm && (
         <div className="parts-form-card">
           <h3 className="form-title">{editId ? 'Edit Part' : 'Add New Part'}</h3>
           <div className="parts-form-grid">
-            <div className="pf-field">
-              <label>TYPE *</label>
+            <div className="pf-field"><label>TYPE *</label>
               <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
                 {PART_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div className="pf-field pf-wide">
-              <label>NAME *</label>
-              <input type="text" placeholder="e.g. NVIDIA RTX 5090" value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            <div className="pf-field pf-wide"><label>NAME *</label>
+              <input type="text" placeholder="e.g. NVIDIA RTX 5090" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
             </div>
-            <div className="pf-field">
-              <label>PRICE ($) *</label>
-              <input type="number" placeholder="299" value={form.price}
-                onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
+            <div className="pf-field"><label>PRICE ($) *</label>
+              <input type="number" placeholder="299" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
             </div>
-            <div className="pf-field">
-              <label>PERFORMANCE SCORE</label>
-              <input type="number" placeholder="0-100" value={form.performanceScore}
-                onChange={e => setForm(f => ({ ...f, performanceScore: e.target.value }))} />
+            <div className="pf-field"><label>PERFORMANCE SCORE</label>
+              <input type="number" placeholder="0-100" value={form.performanceScore} onChange={e => setForm(f => ({ ...f, performanceScore: e.target.value }))} />
             </div>
-            <div className="pf-field">
-              <label>SOCKET (CPU/MB)</label>
-              <input type="text" placeholder="AM5, LGA1700" value={form.socket}
-                onChange={e => setForm(f => ({ ...f, socket: e.target.value }))} />
+            <div className="pf-field"><label>SOCKET (CPU/MB)</label>
+              <input type="text" placeholder="AM5, LGA1700" value={form.socket} onChange={e => setForm(f => ({ ...f, socket: e.target.value }))} />
             </div>
-            <div className="pf-field">
-              <label>RAM TYPE (RAM/MB)</label>
-              <input type="text" placeholder="DDR4, DDR5" value={form.ramType}
-                onChange={e => setForm(f => ({ ...f, ramType: e.target.value }))} />
+            <div className="pf-field"><label>RAM TYPE (RAM/MB)</label>
+              <input type="text" placeholder="DDR4, DDR5" value={form.ramType} onChange={e => setForm(f => ({ ...f, ramType: e.target.value }))} />
             </div>
-            <div className="pf-field">
-              <label>VRAM GB (GPU)</label>
-              <input type="number" placeholder="8" value={form.sizeGb}
-                onChange={e => setForm(f => ({ ...f, sizeGb: e.target.value }))} />
+            <div className="pf-field"><label>VRAM GB (GPU)</label>
+              <input type="number" placeholder="8" value={form.sizeGb} onChange={e => setForm(f => ({ ...f, sizeGb: e.target.value }))} />
             </div>
-            <div className="pf-field">
-              <label>CAPACITY GB (Storage/RAM)</label>
-              <input type="number" placeholder="1000" value={form.capacityGb}
-                onChange={e => setForm(f => ({ ...f, capacityGb: e.target.value }))} />
+            <div className="pf-field"><label>CAPACITY GB (Storage/RAM)</label>
+              <input type="number" placeholder="1000" value={form.capacityGb} onChange={e => setForm(f => ({ ...f, capacityGb: e.target.value }))} />
             </div>
-            <div className="pf-field">
-              <label>WATTAGE (GPU/PSU)</label>
-              <input type="number" placeholder="320" value={form.wattage}
-                onChange={e => setForm(f => ({ ...f, wattage: e.target.value }))} />
+            <div className="pf-field"><label>WATTAGE (GPU/PSU)</label>
+              <input type="number" placeholder="320" value={form.wattage} onChange={e => setForm(f => ({ ...f, wattage: e.target.value }))} />
             </div>
-            <div className="pf-field pf-wide">
-              <label>IMAGE URL</label>
-              <input type="text" placeholder="https://..." value={form.imageUrl}
-                onChange={e => setForm(f => ({ ...f, imageUrl: e.target.value }))} />
+            <div className="pf-field pf-wide"><label>IMAGE URL</label>
+              <input type="text" placeholder="https://..." value={form.imageUrl} onChange={e => setForm(f => ({ ...f, imageUrl: e.target.value }))} />
             </div>
           </div>
           <button className="generate-btn" style={{ marginTop: '20px' }} onClick={handleSave}>
@@ -629,33 +751,20 @@ function PartsPage() {
         </div>
       )}
 
-      {/* Filter tabs */}
       <div className="type-filter">
         {['All', ...PART_TYPES].map(t => (
-          <button key={t} className={`type-tab ${filter === t ? 'active' : ''}`} onClick={() => setFilter(t)}>
-            {t}
-          </button>
+          <button key={t} className={`type-tab ${filter === t ? 'active' : ''}`} onClick={() => setFilter(t)}>{t}</button>
         ))}
       </div>
 
-      {/* Parts table */}
-      {loading ? (
-        <div className="loading-text">Loading parts...</div>
-      ) : (
+      {loading ? <div className="loading-text">Loading parts...</div> : (
         <div className="parts-table">
           <div className="pt-header">
-            <div>TYPE</div>
-            <div>NAME</div>
-            <div>PRICE</div>
-            <div>SCORE</div>
-            <div>DETAILS</div>
-            <div>ACTIONS</div>
+            <div>TYPE</div><div>NAME</div><div>PRICE</div><div>SCORE</div><div>DETAILS</div><div>ACTIONS</div>
           </div>
           {filtered.map(p => (
             <div className="pt-row" key={p.id}>
-              <div className="pt-type" style={{ color: PART_CONFIG[p.type]?.color || '#888' }}>
-                {PART_CONFIG[p.type]?.icon} {p.type}
-              </div>
+              <div className="pt-type" style={{ color: PART_CONFIG[p.type]?.color || '#888' }}>{PART_CONFIG[p.type]?.icon} {p.type}</div>
               <div className="pt-name">{p.name}</div>
               <div className="pt-price">${p.price.toFixed(2)}</div>
               <div className="pt-score">{p.performanceScore}</div>
@@ -667,7 +776,7 @@ function PartsPage() {
                 {p.wattage    && <span>{p.wattage}W</span>}
               </div>
               <div className="pt-actions">
-                <button className="pt-edit-btn"   onClick={() => handleEdit(p)}>Edit</button>
+                <button className="pt-edit-btn" onClick={() => handleEdit(p)}>Edit</button>
                 <button className="pt-delete-btn" onClick={() => handleDelete(p.id)}>✕</button>
               </div>
             </div>
@@ -677,6 +786,7 @@ function PartsPage() {
     </div>
   )
 }
+
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
@@ -691,7 +801,7 @@ export default function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/profile"  element={<Protected><ProfilePage /></Protected>} />
             <Route path="/compare"  element={<Protected><ComparePage /></Protected>} />
-	    <Route path="/parts" element={<PartsPage />} />
+            <Route path="/parts"    element={<PartsPage />} />
           </Routes>
         </div>
       </BrowserRouter>
