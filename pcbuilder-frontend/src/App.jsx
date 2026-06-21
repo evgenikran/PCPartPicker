@@ -23,6 +23,14 @@ function Protected({ children }) {
   return user ? children : <Navigate to="/login" replace />
 }
 
+function AdminOnly({ children }) {
+  const { user } = useAuth()
+  if (!user) return <Navigate to="/login" replace />
+  if (!user.isAdmin) return <Navigate to="/" replace />
+  return children
+}
+
+// ─── Nav ──────────────────────────────────────────────────────────────────────
 function Nav() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -30,7 +38,7 @@ function Nav() {
     <nav className="nav">
       <Link to="/" className="nav-logo">◈ BUILDFORGE</Link>
       <div className="nav-links">
-        <Link to="/parts" className="nav-link">⚙ Parts</Link>
+        {user?.isAdmin && <Link to="/admin" className="nav-link">⚙ Admin</Link>}
         {user ? (
           <>
             <Link to="/profile" className="nav-link">⊞ {user.username}</Link>
@@ -47,6 +55,7 @@ function Nav() {
   )
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
 const WORKLOADS      = ['Gaming', 'Video Editing', 'AI']
 const WORKLOAD_ICONS = { 'Gaming': '🎮', 'Video Editing': '🎬', 'AI': '🤖' }
 const PART_CONFIG    = {
@@ -223,7 +232,7 @@ function LoginPage() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Login failed.'); return }
-      login({ token: data.token, username: data.username, email: data.email, id: data.id })
+      login({ token: data.token, username: data.username, email: data.email, id: data.id, isAdmin: data.isAdmin })
       navigate('/')
     } catch { setError('Could not reach the server.') } finally { setLoading(false) }
   }
@@ -270,7 +279,7 @@ function RegisterPage() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Registration failed.'); return }
-      login({ token: data.token, username, email, id: data.id })
+      login({ token: data.token, username, email, id: data.id, isAdmin: data.isAdmin })
       navigate('/')
     } catch { setError('Could not reach the server.') } finally { setLoading(false) }
   }
@@ -301,13 +310,13 @@ function RegisterPage() {
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 function ProfilePage() {
-  const { user }               = useAuth()
-  const navigate               = useNavigate()
-  const [builds,    setBuilds]    = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [selected,  setSelected]  = useState([])
+  const { user }                    = useAuth()
+  const navigate                    = useNavigate()
+  const [builds,     setBuilds]     = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [selected,   setSelected]   = useState([])
   const [inspecting, setInspecting] = useState(null)
-  const [message, setMessage] = useState('')
+  const [message,    setMessage]    = useState('')
 
   useEffect(() => {
     async function fetchBuilds() {
@@ -319,17 +328,17 @@ function ProfilePage() {
     fetchBuilds()
   }, [])
 
-async function handleDelete(id) {
-  const res = await fetch(`${BASE_URL}/api/SavedBuilds/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } })
-  if (res.ok) {
-    setBuilds(prev => prev.filter(b => b.id !== id))
-    if (inspecting === id) setInspecting(null)
-    setMessage('Build deleted successfully.')
-  } else {
-    setMessage('Failed to delete build.')
+  async function handleDelete(id) {
+    const res = await fetch(`${BASE_URL}/api/SavedBuilds/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } })
+    if (res.ok) {
+      setBuilds(prev => prev.filter(b => b.id !== id))
+      if (inspecting === id) setInspecting(null)
+      setMessage('Build deleted successfully.')
+    } else {
+      setMessage('Failed to delete build.')
+    }
+    setTimeout(() => setMessage(''), 4000)
   }
-  setTimeout(() => setMessage(''), 5000)
-}
 
   function toggleSelect(id) {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : prev.length < 2 ? [...prev, id] : prev)
@@ -348,18 +357,20 @@ async function handleDelete(id) {
           <p className="profile-sub">{user.email}</p>
         </div>
       </div>
-{selected.length > 0 && (
-  <div className="compare-bar">
-    <span>{selected.length} build{selected.length > 1 ? 's' : ''} selected</span>
-    <button className="generate-btn" style={{ padding: '10px 24px', fontSize: '14px' }}
-      onClick={() => navigate(`/compare?id1=${selected[0]}&id2=${selected[1]}`)} disabled={selected.length < 2}>
-      Compare Selected →
-    </button>
-    <button className="nav-btn" onClick={() => setSelected([])}>Clear</button>
-  </div>
-)}
 
-{message && <div className="success-card">✓ {message}</div>}
+      {selected.length > 0 && (
+        <div className="compare-bar">
+          <span>{selected.length} build{selected.length > 1 ? 's' : ''} selected</span>
+          <button className="generate-btn" style={{ padding: '10px 24px', fontSize: '14px' }}
+            onClick={() => navigate(`/compare?id1=${selected[0]}&id2=${selected[1]}`)} disabled={selected.length < 2}>
+            Compare Selected →
+          </button>
+          <button className="nav-btn" onClick={() => setSelected([])}>Clear</button>
+        </div>
+      )}
+
+      {message && <div className={message.includes('Failed') ? 'error-card' : 'success-card'}>{message.includes('Failed') ? '⚠' : '✓'} {message}</div>}
+
       {loading ? (
         <div className="loading-text">Loading builds...</div>
       ) : builds.length === 0 ? (
@@ -444,7 +455,6 @@ function ComparePage() {
   if (error)   return <div className="page"><div className="error-card">⚠ {error}</div></div>
 
   const PART_TYPES = ['CPU', 'GPU', 'RAM', 'Motherboard', 'Storage', 'PSU']
-
   const WEIGHTS = {
     'Gaming':        { GPU: 0.70, CPU: 0.20, RAM: 0.05, Storage: 0.025, PSU: 0.025, Motherboard: 0 },
     'Video Editing': { CPU: 0.50, GPU: 0.30, RAM: 0.15, Storage: 0.05,  PSU: 0,     Motherboard: 0 },
@@ -592,28 +602,10 @@ function ComparePage() {
                 </div>
               </div>
               <div className={`cmp-col-build ${pw1 ? 'cmp-cell-win' : ''}`}>
-                {p1 ? (
-                  <>
-                    <div className="cmp-part-name">{p1.name}</div>
-                    <div className="cmp-part-footer">
-                      <span className="cmp-part-price">${p1.price.toFixed(2)}</span>
-                      {s1 > 0 && <span className="cmp-part-score">{s1} pts</span>}
-                      {pw1 && <span className="cmp-win-tag">✓ Better</span>}
-                    </div>
-                  </>
-                ) : <span style={{ color: 'var(--dim)' }}>—</span>}
+                {p1 ? (<><div className="cmp-part-name">{p1.name}</div><div className="cmp-part-footer"><span className="cmp-part-price">${p1.price.toFixed(2)}</span>{s1 > 0 && <span className="cmp-part-score">{s1} pts</span>}{pw1 && <span className="cmp-win-tag">✓ Better</span>}</div></>) : <span style={{ color: 'var(--dim)' }}>—</span>}
               </div>
               <div className={`cmp-col-build ${pw2 ? 'cmp-cell-win' : ''}`}>
-                {p2 ? (
-                  <>
-                    <div className="cmp-part-name">{p2.name}</div>
-                    <div className="cmp-part-footer">
-                      <span className="cmp-part-price">${p2.price.toFixed(2)}</span>
-                      {s2 > 0 && <span className="cmp-part-score">{s2} pts</span>}
-                      {pw2 && <span className="cmp-win-tag">✓ Better</span>}
-                    </div>
-                  </>
-                ) : <span style={{ color: 'var(--dim)' }}>—</span>}
+                {p2 ? (<><div className="cmp-part-name">{p2.name}</div><div className="cmp-part-footer"><span className="cmp-part-price">${p2.price.toFixed(2)}</span>{s2 > 0 && <span className="cmp-part-score">{s2} pts</span>}{pw2 && <span className="cmp-win-tag">✓ Better</span>}</div></>) : <span style={{ color: 'var(--dim)' }}>—</span>}
               </div>
             </div>
           )
@@ -635,152 +627,274 @@ function ComparePage() {
   )
 }
 
-// ─── Parts ────────────────────────────────────────────────────────────────────
-const PART_TYPES = ['CPU', 'GPU', 'Motherboard', 'RAM', 'Storage', 'PSU']
-const EMPTY_PART = { type: 'GPU', name: '', price: '', performanceScore: '', socket: '', ramType: '', sizeGb: '', capacityGb: '', wattage: '', imageUrl: '' }
+// ─── Admin Page ───────────────────────────────────────────────────────────────
+const PART_TYPES  = ['CPU', 'GPU', 'Motherboard', 'RAM', 'Storage', 'PSU']
+const EMPTY_PART  = { type: 'GPU', name: '', price: '', performanceScore: '', socket: '', ramType: '', sizeGb: '', capacityGb: '', wattage: '', imageUrl: '' }
 
-function PartsPage() {
-  const [parts,    setParts]    = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [filter,   setFilter]   = useState('All')
-  const [showForm, setShowForm] = useState(false)
-  const [editId,   setEditId]   = useState(null)
-  const [form,     setForm]     = useState(EMPTY_PART)
-  const [error,    setError]    = useState('')
-  const [success,  setSuccess]  = useState('')
- 
+function AdminPage() {
+  const { user }                    = useAuth()
+  const [tab,       setTab]         = useState('users')
+  const [users,     setUsers]       = useState([])
+  const [parts,     setParts]       = useState([])
+  const [loading,   setLoading]     = useState(true)
+  const [filter,    setFilter]      = useState('All')
+  const [showForm,  setShowForm]    = useState(false)
+  const [editId,    setEditId]      = useState(null)
+  const [form,      setForm]        = useState(EMPTY_PART)
+  const [message,   setMessage]     = useState('')
+  const [isError,   setIsError]     = useState(false)
+  const [search, setSearch] = useState('')
 
-  useEffect(() => { fetchParts() }, [])
+  const headers = { 'Authorization': `Bearer ${user.token}` }
 
-  async function fetchParts() {
-    setLoading(true)
+  function showMsg(msg, err = false) {
+    setMessage(msg); setIsError(err)
+    setTimeout(() => setMessage(''), 4000)
+  }
+
+  useEffect(() => {
+    fetchUsers()
+    fetchParts()
+  }, [])
+
+  async function fetchUsers() {
     try {
-      const res = await fetch(`${BASE_URL}/api/Parts`)
-      if (res.ok) setParts(await res.json())
+      const res = await fetch(`${BASE_URL}/api/Admin/users`, { headers })
+      if (res.ok) setUsers(await res.json())
     } finally { setLoading(false) }
   }
 
-  async function handleSave() {
-    setError(''); setSuccess('')
-    if (!form.name || !form.type || !form.price) { setError('Name, Type and Price are required.'); return }
+  async function fetchParts() {
+    const res = await fetch(`${BASE_URL}/api/Parts`)
+    if (res.ok) setParts(await res.json())
+  }
+
+  async function handleDeleteUser(id) {
+    if (!window.confirm('Delete this user? All their builds will also be deleted.')) return
+    const res = await fetch(`${BASE_URL}/api/Admin/users/${id}`, { method: 'DELETE', headers })
+    if (res.ok) { setUsers(prev => prev.filter(u => u.id !== id)); showMsg('User deleted.') }
+    else { const e = await res.json(); showMsg(e.error || 'Failed.', true) }
+  }
+
+  async function handleToggleAdmin(id) {
+    const res = await fetch(`${BASE_URL}/api/Admin/users/${id}/promote`, { method: 'PUT', headers })
+    if (res.ok) {
+      const data = await res.json()
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, isAdmin: data.isAdmin } : u))
+      showMsg(data.message)
+    }
+  }
+
+  async function handleSavePart() {
+    if (!form.name || !form.type || !form.price) { showMsg('Name, Type and Price are required.', true); return }
     const body = { ...form, price: Number(form.price), performanceScore: Number(form.performanceScore) || 0, sizeGb: form.sizeGb ? Number(form.sizeGb) : null, capacityGb: form.capacityGb ? Number(form.capacityGb) : null, wattage: form.wattage ? Number(form.wattage) : null }
-    const url = editId ? `${BASE_URL}/api/Parts/${editId}` : `${BASE_URL}/api/Parts`
+    const url    = editId ? `${BASE_URL}/api/Parts/${editId}` : `${BASE_URL}/api/Parts`
     const method = editId ? 'PUT' : 'POST'
-    try {
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      if (!res.ok) { const e = await res.json(); setError(e.error || 'Failed.'); return }
-      setSuccess(editId ? 'Part updated!' : 'Part added!')
-      setShowForm(false); setEditId(null); setForm(EMPTY_PART)
-      fetchParts()
-    } catch { setError('Could not reach the server.') }
+    const res    = await fetch(url, { method, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    if (res.ok) { showMsg(editId ? 'Part updated!' : 'Part added!'); setShowForm(false); setEditId(null); setForm(EMPTY_PART); fetchParts() }
+    else { const e = await res.json(); showMsg(e.error || 'Failed.', true) }
   }
 
- async function handleDelete(id) {
-	  const res = await fetch(`${BASE_URL}/api/SavedBuilds/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${user.token}` } })
-  if (res.ok) {
-    setBuilds(prev => prev.filter(b => b.id !== id))
-    if (inspecting === id) setInspecting(null)
-    setMessage('Build deleted successfully.')
-    setTimeout(() => setMessage(''), 3000)
-   }
- }
+  async function handleDeletePart(id) {
+    if (!window.confirm('Delete this part?')) return
+    const res = await fetch(`${BASE_URL}/api/Parts/${id}`, { method: 'DELETE' })
+    if (res.ok) { setParts(prev => prev.filter(p => p.id !== id)); showMsg('Part deleted.') }
+  }
 
-  function handleEdit(part) {
+  function handleEditPart(part) {
     setForm({ type: part.type, name: part.name, price: part.price, performanceScore: part.performanceScore, socket: part.socket || '', ramType: part.ramType || '', sizeGb: part.sizeGb || '', capacityGb: part.capacityGb || '', wattage: part.wattage || '', imageUrl: part.imageUrl || '' })
-    setEditId(part.id); setShowForm(true); setError(''); setSuccess('')
+    setEditId(part.id); setShowForm(true)
   }
 
-  const filtered = filter === 'All' ? parts : parts.filter(p => p.type === filter)
+
+
+
+  const filteredParts = parts
+  .filter(p => filter === 'All' || p.type === filter)
+  .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
 
   return (
     <div className="page">
       <div className="profile-header">
         <div>
-          <h2 className="profile-title">⚙ Parts Manager</h2>
-          <p className="profile-sub">{parts.length} parts in database</p>
+          <h2 className="profile-title">⚙ Admin Panel</h2>
+          <p className="profile-sub">Manage users and parts</p>
         </div>
-        <button className="generate-btn" style={{ width: 'auto', padding: '12px 24px' }}
-          onClick={() => { setShowForm(!showForm); setEditId(null); setForm(EMPTY_PART); setError(''); setSuccess('') }}>
-          {showForm ? 'Cancel' : '+ Add Part'}
+      </div>
+
+      {message && <div className={isError ? 'error-card' : 'success-card'}>{isError ? '⚠' : '✓'} {message}</div>}
+
+      {/* Tabs */}
+      <div className="admin-tabs">
+        <button className={`admin-tab ${tab === 'users' ? 'active' : ''}`} onClick={() => setTab('users')}>
+          👥 Users ({users.length})
+        </button>
+        <button className={`admin-tab ${tab === 'parts' ? 'active' : ''}`} onClick={() => setTab('parts')}>
+          🔧 Parts ({parts.length})
         </button>
       </div>
 
-      {error   && <div className="error-card">⚠ {error}</div>}
-      {success && <div className="success-card">✓ {success}</div>}
-
-      {showForm && (
-        <div className="parts-form-card">
-          <h3 className="form-title">{editId ? 'Edit Part' : 'Add New Part'}</h3>
-          <div className="parts-form-grid">
-            <div className="pf-field"><label>TYPE *</label>
-              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-                {PART_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+      {/* Users Tab */}
+      {tab === 'users' && (
+        <div className="admin-section">
+          {loading ? <div className="loading-text">Loading users...</div> : (
+            <div className="users-table">
+              <div className="ut-header">
+                <div>USER</div>
+                <div>EMAIL</div>
+                <div>JOINED</div>
+                <div>BUILDS</div>
+                <div>ROLE</div>
+                <div>ACTIONS</div>
+              </div>
+              {users.map(u => (
+                <div className="ut-row" key={u.id}>
+                  <div className="ut-username">
+                    {u.username}
+                    {u.id === user.id && <span className="ut-you-badge">You</span>}
+                  </div>
+                  <div className="ut-email">{u.email}</div>
+                  <div className="ut-date">{new Date(u.createdAt).toLocaleDateString()}</div>
+                  <div className="ut-builds">{u.buildCount}</div>
+                  <div className="ut-role">
+                    {u.isAdmin
+                      ? <span className="role-admin">⚙ Admin</span>
+                      : <span className="role-user">User</span>}
+                  </div>
+                  <div className="ut-actions">
+                    {u.id !== user.id && (
+                      <>
+                        <button className="pt-edit-btn" onClick={() => handleToggleAdmin(u.id)}>
+                          {u.isAdmin ? 'Demote' : 'Promote'}
+                        </button>
+                        <button className="pt-delete-btn" onClick={() => handleDeleteUser(u.id)}>✕</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="pf-field pf-wide"><label>NAME *</label>
-              <input type="text" placeholder="e.g. NVIDIA RTX 5090" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-            </div>
-            <div className="pf-field"><label>PRICE ($) *</label>
-              <input type="number" placeholder="299" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
-            </div>
-            <div className="pf-field"><label>PERFORMANCE SCORE</label>
-              <input type="number" placeholder="0-100" value={form.performanceScore} onChange={e => setForm(f => ({ ...f, performanceScore: e.target.value }))} />
-            </div>
-            <div className="pf-field"><label>SOCKET (CPU/MB)</label>
-              <input type="text" placeholder="AM5, LGA1700" value={form.socket} onChange={e => setForm(f => ({ ...f, socket: e.target.value }))} />
-            </div>
-            <div className="pf-field"><label>RAM TYPE (RAM/MB)</label>
-              <input type="text" placeholder="DDR4, DDR5" value={form.ramType} onChange={e => setForm(f => ({ ...f, ramType: e.target.value }))} />
-            </div>
-            <div className="pf-field"><label>VRAM GB (GPU)</label>
-              <input type="number" placeholder="8" value={form.sizeGb} onChange={e => setForm(f => ({ ...f, sizeGb: e.target.value }))} />
-            </div>
-            <div className="pf-field"><label>CAPACITY GB (Storage/RAM)</label>
-              <input type="number" placeholder="1000" value={form.capacityGb} onChange={e => setForm(f => ({ ...f, capacityGb: e.target.value }))} />
-            </div>
-            <div className="pf-field"><label>WATTAGE (GPU/PSU)</label>
-              <input type="number" placeholder="320" value={form.wattage} onChange={e => setForm(f => ({ ...f, wattage: e.target.value }))} />
-            </div>
-            <div className="pf-field pf-wide"><label>IMAGE URL</label>
-              <input type="text" placeholder="https://..." value={form.imageUrl} onChange={e => setForm(f => ({ ...f, imageUrl: e.target.value }))} />
-            </div>
-          </div>
-          <button className="generate-btn" style={{ marginTop: '20px' }} onClick={handleSave}>
-            {editId ? 'Save Changes →' : 'Add Part →'}
-          </button>
+          )}
         </div>
       )}
 
-      <div className="type-filter">
-        {['All', ...PART_TYPES].map(t => (
-          <button key={t} className={`type-tab ${filter === t ? 'active' : ''}`} onClick={() => setFilter(t)}>{t}</button>
-        ))}
-      </div>
-
-      {loading ? <div className="loading-text">Loading parts...</div> : (
-        <div className="parts-table">
-          <div className="pt-header">
-            <div>TYPE</div><div>NAME</div><div>PRICE</div><div>SCORE</div><div>DETAILS</div><div>ACTIONS</div>
+      {/* Parts Tab */}
+      {tab === 'parts' && (
+        <div className="admin-section">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+            <button className="generate-btn" style={{ width: 'auto', padding: '12px 24px' }}
+              onClick={() => { setShowForm(!showForm); setEditId(null); setForm(EMPTY_PART) }}>
+              {showForm ? 'Cancel' : '+ Add Part'}
+            </button>
           </div>
-          {filtered.map(p => (
-            <div className="pt-row" key={p.id}>
-              <div className="pt-type" style={{ color: PART_CONFIG[p.type]?.color || '#888' }}>{PART_CONFIG[p.type]?.icon} {p.type}</div>
-              <div className="pt-name">{p.name}</div>
-              <div className="pt-price">${p.price.toFixed(2)}</div>
-              <div className="pt-score">{p.performanceScore}</div>
-              <div className="pt-details">
-                {p.socket     && <span>Socket: {p.socket}</span>}
-                {p.ramType    && <span>RAM: {p.ramType}</span>}
-                {p.sizeGb     && <span>VRAM: {p.sizeGb}GB</span>}
-                {p.capacityGb && <span>Cap: {p.capacityGb}GB</span>}
-                {p.wattage    && <span>{p.wattage}W</span>}
+
+          {showForm && (
+            <div className="parts-form-card">
+              <h3 className="form-title">{editId ? 'Edit Part' : 'Add New Part'}</h3>
+              <div className="parts-form-grid">
+                <div className="pf-field"><label>TYPE *</label>
+                  <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+                    {PART_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="pf-field pf-wide"><label>NAME *</label>
+                  <input type="text" placeholder="e.g. NVIDIA RTX 5090" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+                </div>
+                <div className="pf-field"><label>PRICE ($) *</label>
+                  <input type="number" placeholder="299" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
+                </div>
+                <div className="pf-field"><label>PERFORMANCE SCORE</label>
+                  <input type="number" placeholder="0-100" value={form.performanceScore} onChange={e => setForm(f => ({ ...f, performanceScore: e.target.value }))} />
+                </div>
+                <div className="pf-field"><label>SOCKET (CPU/MB)</label>
+                  <input type="text" placeholder="AM5, LGA1700" value={form.socket} onChange={e => setForm(f => ({ ...f, socket: e.target.value }))} />
+                </div>
+                <div className="pf-field"><label>RAM TYPE</label>
+                  <input type="text" placeholder="DDR4, DDR5" value={form.ramType} onChange={e => setForm(f => ({ ...f, ramType: e.target.value }))} />
+                </div>
+                <div className="pf-field"><label>VRAM GB (GPU)</label>
+                  <input type="number" placeholder="8" value={form.sizeGb} onChange={e => setForm(f => ({ ...f, sizeGb: e.target.value }))} />
+                </div>
+                <div className="pf-field"><label>CAPACITY GB</label>
+                  <input type="number" placeholder="1000" value={form.capacityGb} onChange={e => setForm(f => ({ ...f, capacityGb: e.target.value }))} />
+                </div>
+                <div className="pf-field"><label>WATTAGE</label>
+                  <input type="number" placeholder="320" value={form.wattage} onChange={e => setForm(f => ({ ...f, wattage: e.target.value }))} />
+                </div>
+                <div className="pf-field pf-wide"><label>IMAGE URL</label>
+                  <input type="text" placeholder="https://..." value={form.imageUrl} onChange={e => setForm(f => ({ ...f, imageUrl: e.target.value }))} />
+                </div>
               </div>
-              <div className="pt-actions">
-                <button className="pt-edit-btn" onClick={() => handleEdit(p)}>Edit</button>
-                <button className="pt-delete-btn" onClick={() => handleDelete(p.id)}>✕</button>
-              </div>
+              <button className="generate-btn" style={{ marginTop: '20px' }} onClick={handleSavePart}>
+                {editId ? 'Save Changes →' : 'Add Part →'}
+              </button>
             </div>
-          ))}
+          )}
+
+	<div className="search-box">
+  <svg
+    className="search-icon"
+    viewBox="0 0 24 24"
+    width="18"
+    height="18"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+  >
+    <circle cx="11" cy="11" r="7" />
+    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+
+  <input
+    type="text"
+    placeholder="Search parts..."
+    value={search}
+    onChange={e => setSearch(e.target.value)}
+    className="parts-search"
+  />
+
+  {search && (
+    <button
+      className="search-clear"
+      onClick={() => setSearch('')}
+      type="button"
+    >
+      ×
+    </button>
+  )}
+</div>
+	
+
+          <div className="type-filter">
+            {['All', ...PART_TYPES].map(t => (
+              <button key={t} className={`type-tab ${filter === t ? 'active' : ''}`} onClick={() => setFilter(t)}>{t}</button>
+            ))}
+          </div>
+
+          <div className="parts-table">
+            <div className="pt-header">
+              <div>TYPE</div><div>NAME</div><div>PRICE</div><div>SCORE</div><div>DETAILS</div><div>ACTIONS</div>
+            </div>
+            {filteredParts.map(p => (
+              <div className="pt-row" key={p.id}>
+                <div className="pt-type" style={{ color: PART_CONFIG[p.type]?.color || '#888' }}>{PART_CONFIG[p.type]?.icon} {p.type}</div>
+                <div className="pt-name">{p.name}</div>
+                <div className="pt-price">${p.price.toFixed(2)}</div>
+                <div className="pt-score">{p.performanceScore}</div>
+                <div className="pt-details">
+                  {p.socket     && <span>Socket: {p.socket}</span>}
+                  {p.ramType    && <span>RAM: {p.ramType}</span>}
+                  {p.sizeGb     && <span>VRAM: {p.sizeGb}GB</span>}
+                  {p.capacityGb && <span>Cap: {p.capacityGb}GB</span>}
+                  {p.wattage    && <span>{p.wattage}W</span>}
+                </div>
+                <div className="pt-actions">
+                  <button className="pt-edit-btn" onClick={() => handleEditPart(p)}>Edit</button>
+                  <button className="pt-delete-btn" onClick={() => handleDeletePart(p.id)}>✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -801,7 +915,7 @@ export default function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/profile"  element={<Protected><ProfilePage /></Protected>} />
             <Route path="/compare"  element={<Protected><ComparePage /></Protected>} />
-            <Route path="/parts"    element={<PartsPage />} />
+            <Route path="/admin"    element={<AdminOnly><AdminPage /></AdminOnly>} />
           </Routes>
         </div>
       </BrowserRouter>

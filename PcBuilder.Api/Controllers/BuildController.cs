@@ -45,19 +45,19 @@ namespace PcBuilder.Api.Controllers
             if (builds.Count == 0)
                 return NotFound(new
                 {
-                    error = $"No build found for ${request.Budget:F0} ({profile.Name}). Try increasing your budget."
+                    error = $"No build found for ${request.Budget:F0} ({profile.Name})."
                 });
 
             var build = builds[0];
 
             // Get AI review
-            //var review = await _aiReview.ReviewBuildAsync(build, profile.Name, request.Budget);
+            var review = await _aiReview.ReviewBuildAsync(build, profile.Name, request.Budget);
 
             var response = new
             {
                 buildType = build.BuildType,
                 totalPrice = build.TotalPrice,
-                //aiReview = review,
+                aiReview = review,
                 parts = build.Parts.Select(p => new
                 {
                     type = p.Type,
